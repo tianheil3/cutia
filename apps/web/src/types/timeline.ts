@@ -55,24 +55,28 @@ export interface Transform {
 	flipY?: boolean;
 }
 
-export type KeyframeInterpolation = "linear" | "hold";
-
 export type AnimatableProperty =
-	| "positionX"
-	| "positionY"
-	| "scale"
-	| "rotate"
-	| "opacity";
+	| "opacity"
+	| "transform.position.x"
+	| "transform.position.y"
+	| "transform.scale"
+	| "transform.rotate";
 
-export interface ElementKeyframe {
-	id: string;
+export type AnimationEasing =
+	| "linear"
+	| "ease-in"
+	| "ease-out"
+	| "ease-in-out"
+	| "hold";
+
+export interface AnimationKeyframe {
 	time: number;
 	value: number;
-	interpolation: KeyframeInterpolation;
+	easing?: AnimationEasing;
 }
 
-export type ElementKeyframeMap = Partial<
-	Record<AnimatableProperty, ElementKeyframe[]>
+export type ElementAnimations = Partial<
+	Record<AnimatableProperty, AnimationKeyframe[]>
 >;
 
 // ---- Transitions ----
@@ -135,7 +139,7 @@ export interface VideoElement extends BaseTimelineElement {
 	hidden?: boolean;
 	transform: Transform;
 	opacity: number;
-	keyframes?: ElementKeyframeMap;
+	animations?: ElementAnimations;
 	playbackRate?: number;
 	reversed?: boolean;
 }
@@ -146,7 +150,7 @@ export interface ImageElement extends BaseTimelineElement {
 	hidden?: boolean;
 	transform: Transform;
 	opacity: number;
-	keyframes?: ElementKeyframeMap;
+	animations?: ElementAnimations;
 }
 
 export interface TextStroke {
@@ -175,7 +179,7 @@ export interface TextElement extends BaseTimelineElement {
 	hidden?: boolean;
 	transform: Transform;
 	opacity: number;
-	keyframes?: ElementKeyframeMap;
+	animations?: ElementAnimations;
 	stroke?: TextStroke;
 	shadow?: TextShadow;
 	boxWidth?: number;
@@ -191,7 +195,7 @@ export interface StickerElement extends BaseTimelineElement {
 	hidden?: boolean;
 	transform: Transform;
 	opacity: number;
-	keyframes?: ElementKeyframeMap;
+	animations?: ElementAnimations;
 	color?: string;
 }
 
@@ -202,7 +206,7 @@ export type TimelineElement =
 	| TextElement
 	| StickerElement;
 
-export type KeyframeCapableElement =
+export type AnimatableElement =
 	| VideoElement
 	| ImageElement
 	| TextElement
