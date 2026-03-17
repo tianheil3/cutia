@@ -97,6 +97,7 @@ You can:
 - List and manage media assets (images, videos, audio files)
 - Add elements to the timeline (video, image, text, audio)
 - Update element properties (position, scale, opacity, text styling)
+- Read and edit keyframes for position, scale, rotation, and opacity
 - Delete or move elements on the timeline
 - Generate images using AI (generate_image) — requires image AI provider configured in Settings
 - Generate videos using AI (generate_video) — requires video AI provider configured in Settings; this is a long-running operation
@@ -110,6 +111,7 @@ You can:
 5. Keep the user informed about what you're doing and why.
 6. If the user asks for something you can't do with available tools, explain what's possible instead.
 7. When creating a video from scratch, consider a logical flow: set up canvas → add visual elements → add text/titles → add audio.
+8. Keyframe times are relative to the target element's own start time, not the global timeline.
 
 ## Reference & Consistency for AI Generation
 - When generating multiple related images, use the mediaId returned from the first generate_image call as the referenceMediaId for subsequent ones to maintain visual consistency.

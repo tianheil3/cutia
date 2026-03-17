@@ -1,5 +1,6 @@
 import type { CanvasRenderer } from "../canvas-renderer";
 import { BaseNode } from "./base-node";
+import { resolveAnimatedElementState } from "@/lib/timeline/keyframes";
 import type { TextElement } from "@/types/timeline";
 import { FONT_SIZE_SCALE_REFERENCE } from "@/constants/text-constants";
 
@@ -89,17 +90,24 @@ export class TextNode extends BaseNode<TextNodeParams> {
 
 		renderer.context.save();
 
-		const x = this.params.transform.position.x + this.params.canvasCenter.x;
-		const y = this.params.transform.position.y + this.params.canvasCenter.y;
+		const resolved = resolveAnimatedElementState({
+			baseTransform: this.params.transform,
+			baseOpacity: this.params.opacity,
+			keyframes: this.params.keyframes,
+			time: time - this.params.startTime,
+		});
+
+		const x = resolved.transform.position.x + this.params.canvasCenter.x;
+		const y = resolved.transform.position.y + this.params.canvasCenter.y;
 
 		renderer.context.translate(x, y);
-		if (this.params.transform.rotate) {
-			renderer.context.rotate((this.params.transform.rotate * Math.PI) / 180);
+		if (resolved.transform.rotate) {
+			renderer.context.rotate((resolved.transform.rotate * Math.PI) / 180);
 		}
-		if (this.params.transform.scale !== 1) {
+		if (resolved.transform.scale !== 1) {
 			renderer.context.scale(
-				this.params.transform.scale,
-				this.params.transform.scale,
+				resolved.transform.scale,
+				resolved.transform.scale,
 			);
 		}
 
@@ -116,7 +124,7 @@ export class TextNode extends BaseNode<TextNodeParams> {
 		renderer.context.fillStyle = this.params.color;
 
 		const prevAlpha = renderer.context.globalAlpha;
-		renderer.context.globalAlpha = this.params.opacity;
+		renderer.context.globalAlpha = resolved.opacity;
 
 		const boxWidth = this.params.boxWidth;
 		const hasBoxWidth = boxWidth !== undefined && boxWidth > 0;

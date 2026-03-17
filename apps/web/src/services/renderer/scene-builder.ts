@@ -51,6 +51,7 @@ function buildVisualElementNode({
 			trimEnd: element.trimEnd,
 			transform: element.transform,
 			opacity: element.opacity,
+			keyframes: element.keyframes,
 			playbackRate: videoElement.playbackRate,
 			reversed: videoElement.reversed,
 		});
@@ -65,6 +66,7 @@ function buildVisualElementNode({
 			trimEnd: element.trimEnd,
 			transform: element.transform,
 			opacity: element.opacity,
+			keyframes: element.keyframes,
 		});
 	}
 
@@ -201,6 +203,7 @@ export function buildScene(params: BuildSceneParams) {
 						trimEnd: element.trimEnd,
 						transform: element.transform,
 						opacity: element.opacity,
+						keyframes: element.keyframes,
 						color: element.color,
 					}),
 				);

@@ -1,10 +1,23 @@
 import { EditorCore } from "@/core";
 import {
+	canElementHaveKeyframes,
+	deleteElementKeyframes,
+	hasAnyKeyframes,
+	normalizeElementKeyframes,
+	setElementKeyframes,
+	SUPPORTED_KEYFRAME_PROPERTIES,
+} from "@/lib/timeline/keyframes";
+import {
 	buildVideoElement,
 	buildImageElement,
 	buildTextElement,
 	buildUploadAudioElement,
 } from "@/lib/timeline/element-utils";
+import type {
+	AnimatableProperty,
+	KeyframeInterpolation,
+	TimelineElement,
+} from "@/types/timeline";
 import type { AgentTool } from "./types";
 
 export const getTimelineStateTool: AgentTool = {
@@ -36,6 +49,17 @@ export const getTimelineStateTool: AgentTool = {
 				trimEnd: element.trimEnd,
 				...("content" in element ? { content: element.content } : {}),
 				...("mediaId" in element ? { mediaId: element.mediaId } : {}),
+				...("transform" in element ? { transform: element.transform } : {}),
+				...("opacity" in element ? { opacity: element.opacity } : {}),
+				...(canElementHaveKeyframes(element) && hasAnyKeyframes({
+					keyframes: element.keyframes,
+				})
+					? {
+							keyframes: normalizeElementKeyframes({
+								keyframes: element.keyframes,
+							}),
+						}
+					: {}),
 			})),
 		}));
 
@@ -43,6 +67,307 @@ export const getTimelineStateTool: AgentTool = {
 			success: true,
 			message: `Timeline has ${tracks.length} track(s), total duration: ${duration.toFixed(2)}s`,
 			data: { tracks: trackDetails, totalDuration: duration },
+		};
+	},
+};
+
+function getElementFromTrack({
+	trackId,
+	elementId,
+}: {
+	trackId: string;
+	elementId: string;
+}):
+	| {
+			element: TimelineElement;
+	  }
+	| {
+			error: string;
+	  } {
+	const editor = EditorCore.getInstance();
+	const track = editor.timeline.getTrackById({ trackId });
+	if (!track) {
+		return { error: `Track '${trackId}' not found` };
+	}
+
+	const element = track.elements.find((candidate) => candidate.id === elementId);
+	if (!element) {
+		return { error: `Element '${elementId}' not found in track '${trackId}'` };
+	}
+
+	return { element };
+}
+
+const getElementKeyframesTool: AgentTool = {
+	name: "get_element_keyframes",
+	description:
+		"Get the keyframes for a timeline element. Keyframe times are relative to the element's own start time.",
+	parameters: {
+		type: "object",
+		properties: {
+			trackId: {
+				type: "string",
+				description: "The track ID containing the element",
+			},
+			elementId: {
+				type: "string",
+				description: "The element ID to inspect",
+			},
+		},
+		required: ["trackId", "elementId"],
+	},
+	async execute(args) {
+		const trackId = args.trackId as string;
+		const elementId = args.elementId as string;
+		const result = getElementFromTrack({ trackId, elementId });
+		if ("error" in result) {
+			return { success: false, message: result.error };
+		}
+
+		const { element } = result;
+		if (!canElementHaveKeyframes(element)) {
+			return {
+				success: false,
+				message: `Element '${elementId}' of type '${element.type}' does not support keyframes`,
+			};
+		}
+
+		return {
+			success: true,
+			message: `Loaded keyframes for element '${element.name}'`,
+			data: {
+				supportedProperties: SUPPORTED_KEYFRAME_PROPERTIES,
+				transform: element.transform,
+				opacity: element.opacity,
+				keyframes: normalizeElementKeyframes({ keyframes: element.keyframes }),
+			},
+		};
+	},
+};
+
+const setElementKeyframesTool: AgentTool = {
+	name: "set_element_keyframes",
+	description:
+		"Create or update keyframes on a timeline element. Keyframe times are relative to the element's own start time.",
+	parameters: {
+		type: "object",
+		properties: {
+			trackId: {
+				type: "string",
+				description: "The track ID containing the element",
+			},
+			elementId: {
+				type: "string",
+				description: "The element ID to update",
+			},
+			keyframes: {
+				type: "array",
+				description:
+					"Batch of keyframes to create or update. If keyframeId is omitted, a keyframe at the same property/time will be replaced.",
+				items: {
+					type: "object",
+					properties: {
+						keyframeId: {
+							type: "string",
+							description:
+								"Existing keyframe ID to update. Optional when creating or replacing by property/time.",
+						},
+						property: {
+							type: "string",
+							enum: SUPPORTED_KEYFRAME_PROPERTIES,
+							description: "Animated property to edit",
+						},
+						time: {
+							type: "number",
+							description:
+								"Local time in seconds relative to the element start (must be within the element duration)",
+						},
+						value: {
+							type: "number",
+							description: "Numeric value for this keyframe",
+						},
+						interpolation: {
+							type: "string",
+							enum: ["linear", "hold"],
+							description:
+								"Interpolation mode used from this keyframe until the next keyframe",
+						},
+					},
+					required: ["property", "time", "value"],
+				},
+			},
+		},
+		required: ["trackId", "elementId", "keyframes"],
+	},
+	async execute(args) {
+		const editor = EditorCore.getInstance();
+		const trackId = args.trackId as string;
+		const elementId = args.elementId as string;
+		const result = getElementFromTrack({ trackId, elementId });
+		if ("error" in result) {
+			return { success: false, message: result.error };
+		}
+
+		const { element } = result;
+		if (!canElementHaveKeyframes(element)) {
+			return {
+				success: false,
+				message: `Element '${elementId}' of type '${element.type}' does not support keyframes`,
+			};
+		}
+
+		const keyframes = (args.keyframes as Array<Record<string, unknown>>) ?? [];
+		if (keyframes.length === 0) {
+			return { success: false, message: "No keyframes provided" };
+		}
+
+		try {
+			const nextKeyframes = setElementKeyframes({
+				existing: element.keyframes,
+				duration: element.duration,
+				keyframes: keyframes.map((entry) => ({
+					keyframeId: entry.keyframeId as string | undefined,
+					property: entry.property as AnimatableProperty,
+					time: entry.time as number,
+					value: entry.value as number,
+					interpolation: entry.interpolation as KeyframeInterpolation | undefined,
+				})),
+			});
+
+			editor.timeline.updateElements({
+				updates: [
+					{
+						trackId,
+						elementId,
+						updates: { keyframes: nextKeyframes },
+					},
+				],
+			});
+
+			return {
+				success: true,
+				message: `Saved ${keyframes.length} keyframe(s) on '${element.name}'`,
+				data: {
+					supportedProperties: SUPPORTED_KEYFRAME_PROPERTIES,
+					keyframes: nextKeyframes,
+				},
+			};
+		} catch (error) {
+			return {
+				success: false,
+				message:
+					error instanceof Error ? error.message : "Failed to save keyframes",
+			};
+		}
+	},
+};
+
+const deleteElementKeyframesTool: AgentTool = {
+	name: "delete_element_keyframes",
+	description:
+		"Delete keyframes from a timeline element by keyframe ID or by property/time selector.",
+	parameters: {
+		type: "object",
+		properties: {
+			trackId: {
+				type: "string",
+				description: "The track ID containing the element",
+			},
+			elementId: {
+				type: "string",
+				description: "The element ID to update",
+			},
+			keyframeIds: {
+				type: "array",
+				description: "Specific keyframe IDs to delete",
+				items: {
+					type: "string",
+				},
+			},
+			selectors: {
+				type: "array",
+				description:
+					"Delete by property and local keyframe time when keyframe IDs are not known",
+				items: {
+					type: "object",
+					properties: {
+						property: {
+							type: "string",
+							enum: SUPPORTED_KEYFRAME_PROPERTIES,
+							description: "Animated property to match",
+						},
+						time: {
+							type: "number",
+							description:
+								"Local time in seconds relative to the element start",
+						},
+					},
+					required: ["property", "time"],
+				},
+			},
+		},
+		required: ["trackId", "elementId"],
+	},
+	async execute(args) {
+		const editor = EditorCore.getInstance();
+		const trackId = args.trackId as string;
+		const elementId = args.elementId as string;
+		const result = getElementFromTrack({ trackId, elementId });
+		if ("error" in result) {
+			return { success: false, message: result.error };
+		}
+
+		const { element } = result;
+		if (!canElementHaveKeyframes(element)) {
+			return {
+				success: false,
+				message: `Element '${elementId}' of type '${element.type}' does not support keyframes`,
+			};
+		}
+
+		const keyframeIds = (args.keyframeIds as string[] | undefined) ?? [];
+		const selectors =
+			(args.selectors as Array<Record<string, unknown>> | undefined)?.map(
+				(entry) => ({
+					property: entry.property as AnimatableProperty,
+					time: entry.time as number,
+				}),
+			) ?? [];
+
+		if (keyframeIds.length === 0 && selectors.length === 0) {
+			return {
+				success: false,
+				message: "Provide at least one keyframeId or selector to delete",
+			};
+		}
+
+		const nextKeyframes = deleteElementKeyframes({
+			existing: element.keyframes,
+			keyframeIds,
+			selectors,
+		});
+
+		editor.timeline.updateElements({
+			updates: [
+				{
+					trackId,
+					elementId,
+					updates: {
+						keyframes: hasAnyKeyframes({ keyframes: nextKeyframes })
+							? nextKeyframes
+							: undefined,
+					},
+				},
+			],
+		});
+
+		return {
+			success: true,
+			message: `Deleted keyframes from '${element.name}'`,
+			data: {
+				supportedProperties: SUPPORTED_KEYFRAME_PROPERTIES,
+				keyframes: nextKeyframes,
+			},
 		};
 	},
 };
@@ -514,6 +839,9 @@ export const timelineTools: AgentTool[] = [
 	addVideoToTimelineTool,
 	addTextToTimelineTool,
 	addAudioToTimelineTool,
+	getElementKeyframesTool,
+	setElementKeyframesTool,
+	deleteElementKeyframesTool,
 	updateElementTool,
 	deleteElementTool,
 	moveElementTool,
