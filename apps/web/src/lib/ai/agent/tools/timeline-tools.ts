@@ -1,16 +1,55 @@
 import { EditorCore } from "@/core";
 import {
+	ANIMATABLE_PROPERTIES,
+	canElementHaveAnimations,
+	hasAnimations,
+	normalizeAnimations,
+	type AnimationPreset,
+} from "@/lib/timeline/animation-utils";
+import {
 	buildVideoElement,
 	buildImageElement,
 	buildTextElement,
 	buildUploadAudioElement,
 } from "@/lib/timeline/element-utils";
+import type {
+	AnimatableProperty,
+	AnimationEasing,
+	TimelineElement,
+} from "@/types/timeline";
 import type { AgentTool } from "./types";
+
+function getElementFromTrack({
+	trackId,
+	elementId,
+}: {
+	trackId: string;
+	elementId: string;
+}):
+	| {
+			element: TimelineElement;
+	  }
+	| {
+			error: string;
+	  } {
+	const editor = EditorCore.getInstance();
+	const track = editor.timeline.getTrackById({ trackId });
+	if (!track) {
+		return { error: `Track '${trackId}' not found` };
+	}
+
+	const element = track.elements.find((candidate) => candidate.id === elementId);
+	if (!element) {
+		return { error: `Element '${elementId}' not found in track '${trackId}'` };
+	}
+
+	return { element };
+}
 
 export const getTimelineStateTool: AgentTool = {
 	name: "get_timeline_state",
 	description:
-		"Get the current timeline state including all tracks and their elements with timing information.",
+		"Get the current timeline state including all tracks and their elements with timing and animation information.",
 	parameters: {
 		type: "object",
 		properties: {},
@@ -36,6 +75,16 @@ export const getTimelineStateTool: AgentTool = {
 				trimEnd: element.trimEnd,
 				...("content" in element ? { content: element.content } : {}),
 				...("mediaId" in element ? { mediaId: element.mediaId } : {}),
+				...("transform" in element ? { transform: element.transform } : {}),
+				...("opacity" in element ? { opacity: element.opacity } : {}),
+				...(canElementHaveAnimations(element) &&
+				hasAnimations({ animations: element.animations })
+					? {
+							animations: normalizeAnimations({
+								animations: element.animations,
+							}),
+						}
+					: {}),
 			})),
 		}));
 
@@ -43,6 +92,307 @@ export const getTimelineStateTool: AgentTool = {
 			success: true,
 			message: `Timeline has ${tracks.length} track(s), total duration: ${duration.toFixed(2)}s`,
 			data: { tracks: trackDetails, totalDuration: duration },
+		};
+	},
+};
+
+const getElementAnimationsTool: AgentTool = {
+	name: "get_element_animations",
+	description:
+		"Get the current animation state for a visual timeline element. Animation times are relative to the element start.",
+	parameters: {
+		type: "object",
+		properties: {
+			trackId: {
+				type: "string",
+				description: "The track ID containing the element",
+			},
+			elementId: {
+				type: "string",
+				description: "The element ID to inspect",
+			},
+		},
+		required: ["trackId", "elementId"],
+	},
+	async execute(args) {
+		const trackId = args.trackId as string;
+		const elementId = args.elementId as string;
+		const result = getElementFromTrack({ trackId, elementId });
+		if ("error" in result) return { success: false, message: result.error };
+
+		const { element } = result;
+		if (!canElementHaveAnimations(element)) {
+			return {
+				success: false,
+				message: `Element '${elementId}' of type '${element.type}' does not support animations`,
+			};
+		}
+
+		return {
+			success: true,
+			message: `Loaded animations for '${element.name}'`,
+			data: {
+				supportedProperties: ANIMATABLE_PROPERTIES,
+				transform: element.transform,
+				opacity: element.opacity,
+				animations: normalizeAnimations({ animations: element.animations }),
+			},
+		};
+	},
+};
+
+const addKeyframesTool: AgentTool = {
+	name: "add_keyframes",
+	description:
+		"Add or overwrite keyframes for one animatable property on a visual timeline element.",
+	parameters: {
+		type: "object",
+		properties: {
+			trackId: {
+				type: "string",
+				description: "The track ID containing the element",
+			},
+			elementId: {
+				type: "string",
+				description: "The element ID to update",
+			},
+			property: {
+				type: "string",
+				enum: ANIMATABLE_PROPERTIES,
+				description: "Animatable property to update",
+			},
+			keyframes: {
+				type: "array",
+				description:
+					"Keyframes to add. Duplicate timestamps overwrite the previous value.",
+				items: {
+					type: "object",
+					properties: {
+						time: {
+							type: "number",
+							description:
+								"Local time in seconds relative to the element start",
+						},
+						value: {
+							type: "number",
+							description: "Numeric value for the property at this time",
+						},
+						easing: {
+							type: "string",
+							enum: ["linear", "ease-in", "ease-out", "ease-in-out", "hold"],
+							description: "Easing mode from this keyframe until the next one",
+						},
+					},
+					required: ["time", "value"],
+				},
+			},
+		},
+		required: ["trackId", "elementId", "property", "keyframes"],
+	},
+	async execute(args) {
+		const editor = EditorCore.getInstance();
+		const trackId = args.trackId as string;
+		const elementId = args.elementId as string;
+		const property = args.property as AnimatableProperty;
+		const keyframes = (args.keyframes as Array<Record<string, unknown>>) ?? [];
+		const result = getElementFromTrack({ trackId, elementId });
+		if ("error" in result) return { success: false, message: result.error };
+
+		const { element } = result;
+		if (!canElementHaveAnimations(element)) {
+			return {
+				success: false,
+				message: `Element '${elementId}' of type '${element.type}' does not support animations`,
+			};
+		}
+		if (keyframes.length === 0) {
+			return { success: false, message: "No keyframes provided" };
+		}
+
+		try {
+			editor.timeline.addKeyframes({
+				trackId,
+				elementId,
+				property,
+				keyframes: keyframes.map((keyframe) => ({
+					time: keyframe.time as number,
+					value: keyframe.value as number,
+					easing: keyframe.easing as AnimationEasing | undefined,
+				})),
+			});
+		} catch (error) {
+			return {
+				success: false,
+				message:
+					error instanceof Error ? error.message : "Failed to add keyframes",
+			};
+		}
+
+		const refreshed = getElementFromTrack({ trackId, elementId });
+		if ("error" in refreshed) return { success: false, message: refreshed.error };
+
+		return {
+			success: true,
+			message: `Added keyframes to '${refreshed.element.name}'`,
+			data: {
+				animations: normalizeAnimations({
+					animations:
+						canElementHaveAnimations(refreshed.element)
+							? refreshed.element.animations
+							: undefined,
+				}),
+			},
+		};
+	},
+};
+
+const removeKeyframesTool: AgentTool = {
+	name: "remove_keyframes",
+	description:
+		"Remove all keyframes for a property or only the keyframes at specific timestamps.",
+	parameters: {
+		type: "object",
+		properties: {
+			trackId: {
+				type: "string",
+				description: "The track ID containing the element",
+			},
+			elementId: {
+				type: "string",
+				description: "The element ID to update",
+			},
+			property: {
+				type: "string",
+				enum: ANIMATABLE_PROPERTIES,
+				description: "Animatable property to clear or edit",
+			},
+			times: {
+				type: "array",
+				description:
+					"Specific local timestamps to remove. Omit to remove the entire property animation track.",
+				items: {
+					type: "number",
+				},
+			},
+		},
+		required: ["trackId", "elementId", "property"],
+	},
+	async execute(args) {
+		const editor = EditorCore.getInstance();
+		const trackId = args.trackId as string;
+		const elementId = args.elementId as string;
+		const property = args.property as AnimatableProperty;
+		const result = getElementFromTrack({ trackId, elementId });
+		if ("error" in result) return { success: false, message: result.error };
+
+		const { element } = result;
+		if (!canElementHaveAnimations(element)) {
+			return {
+				success: false,
+				message: `Element '${elementId}' of type '${element.type}' does not support animations`,
+			};
+		}
+
+		editor.timeline.removeKeyframes({
+			trackId,
+			elementId,
+			property,
+			times: args.times as number[] | undefined,
+		});
+
+		const refreshed = getElementFromTrack({ trackId, elementId });
+		if ("error" in refreshed) return { success: false, message: refreshed.error };
+
+		return {
+			success: true,
+			message: `Removed keyframes from '${refreshed.element.name}'`,
+			data: {
+				animations: normalizeAnimations({
+					animations:
+						canElementHaveAnimations(refreshed.element)
+							? refreshed.element.animations
+							: undefined,
+				}),
+			},
+		};
+	},
+};
+
+const setAnimationPresetTool: AgentTool = {
+	name: "set_animation_preset",
+	description:
+		"Apply a common motion preset to a visual element without manually specifying every keyframe.",
+	parameters: {
+		type: "object",
+		properties: {
+			trackId: {
+				type: "string",
+				description: "The track ID containing the element",
+			},
+			elementId: {
+				type: "string",
+				description: "The element ID to update",
+			},
+			preset: {
+				type: "string",
+				enum: [
+					"fade-in",
+					"fade-out",
+					"slide-in-left",
+					"slide-in-right",
+					"slide-in-up",
+					"slide-in-down",
+					"zoom-in",
+					"zoom-out",
+					"pop-in",
+				],
+				description: "Preset animation name",
+			},
+			duration: {
+				type: "number",
+				description:
+					"Optional preset duration in seconds. Defaults to a short motion segment capped by the element duration.",
+			},
+		},
+		required: ["trackId", "elementId", "preset"],
+	},
+	async execute(args) {
+		const editor = EditorCore.getInstance();
+		const trackId = args.trackId as string;
+		const elementId = args.elementId as string;
+		const preset = args.preset as AnimationPreset;
+		const result = getElementFromTrack({ trackId, elementId });
+		if ("error" in result) return { success: false, message: result.error };
+
+		const { element } = result;
+		if (!canElementHaveAnimations(element)) {
+			return {
+				success: false,
+				message: `Element '${elementId}' of type '${element.type}' does not support animations`,
+			};
+		}
+
+		editor.timeline.setAnimationPreset({
+			trackId,
+			elementId,
+			preset,
+			duration: args.duration as number | undefined,
+		});
+
+		const refreshed = getElementFromTrack({ trackId, elementId });
+		if ("error" in refreshed) return { success: false, message: refreshed.error };
+
+		return {
+			success: true,
+			message: `Applied preset '${preset}' to '${refreshed.element.name}'`,
+			data: {
+				animations: normalizeAnimations({
+					animations:
+						canElementHaveAnimations(refreshed.element)
+							? refreshed.element.animations
+							: undefined,
+				}),
+			},
 		};
 	},
 };
@@ -76,7 +426,7 @@ export const addVideoToTimelineTool: AgentTool = {
 		const startTime = (args.startTime as number) ?? 0;
 
 		const assets = editor.media.getAssets();
-		const asset = assets.find((a) => a.id === mediaId);
+		const asset = assets.find((item) => item.id === mediaId);
 		if (!asset) {
 			return { success: false, message: `Media asset '${mediaId}' not found` };
 		}
@@ -161,27 +511,24 @@ export const addTextToTimelineTool: AgentTool = {
 			positionX: {
 				type: "number",
 				description:
-					"Horizontal pixel offset from canvas center. 0 = center. Positive = right, negative = left. Range depends on canvas width (e.g. -960 to 960 for 1920px wide).",
+					"Horizontal pixel offset from canvas center. 0 = center. Positive = right, negative = left.",
 			},
 			positionY: {
 				type: "number",
 				description:
-					"Vertical pixel offset from canvas center. 0 = center. Positive = down, negative = up. Range depends on canvas height (e.g. -540 to 540 for 1080px tall).",
+					"Vertical pixel offset from canvas center. 0 = center. Positive = down, negative = up.",
 			},
 			scale: {
 				type: "number",
-				description:
-					"Transform scale factor (default: 1). Values > 1 enlarge, < 1 shrink.",
+				description: "Transform scale factor (default: 1)",
 			},
 			rotate: {
 				type: "number",
-				description:
-					"Rotation angle in degrees (default: 0). Positive = clockwise.",
+				description: "Rotation angle in degrees (default: 0)",
 			},
 			opacity: {
 				type: "number",
-				description:
-					"Element opacity from 0 (transparent) to 1 (opaque). Default: 1.",
+				description: "Element opacity from 0 to 1",
 			},
 		},
 		required: ["content"],
@@ -256,7 +603,7 @@ export const addAudioToTimelineTool: AgentTool = {
 		const startTime = (args.startTime as number) ?? 0;
 
 		const assets = editor.media.getAssets();
-		const asset = assets.find((a) => a.id === mediaId);
+		const asset = assets.find((item) => item.id === mediaId);
 		if (!asset) {
 			return { success: false, message: `Media asset '${mediaId}' not found` };
 		}
@@ -269,7 +616,6 @@ export const addAudioToTimelineTool: AgentTool = {
 		}
 
 		const duration = (args.duration as number) ?? asset.duration ?? 5;
-
 		const element = buildUploadAudioElement({
 			mediaId,
 			name: asset.name,
@@ -292,31 +638,20 @@ export const addAudioToTimelineTool: AgentTool = {
 export const updateElementTool: AgentTool = {
 	name: "update_element",
 	description:
-		"Update properties of an existing timeline element (transform, opacity, text content, styling, etc.).",
+		"Update static properties of an existing timeline element. Do not use this to edit animations.",
 	parameters: {
 		type: "object",
 		properties: {
-			trackId: {
-				type: "string",
-				description: "The track ID containing the element",
-			},
-			elementId: {
-				type: "string",
-				description: "The element ID to update",
-			},
+			trackId: { type: "string", description: "The track ID containing the element" },
+			elementId: { type: "string", description: "The element ID to update" },
 			content: {
 				type: "string",
 				description: "New text content (text elements only)",
 			},
-			fontSize: {
-				type: "number",
-				description:
-					"Font size from 1 to 38 (text elements only). On 1080p: Subtitle: ~3-5, Normal: ~6-10, Title: ~11-15, Headline: ~16-25.",
-			},
+			fontSize: { type: "number", description: "Font size (text elements only)" },
 			fontFamily: {
 				type: "string",
-				description:
-					"Font family name, e.g. 'Arial', 'Inter' (text elements only)",
+				description: "Font family name (text elements only)",
 			},
 			fontWeight: {
 				type: "string",
@@ -344,21 +679,19 @@ export const updateElementTool: AgentTool = {
 			},
 			scale: {
 				type: "number",
-				description: "Transform scale factor. Values > 1 enlarge, < 1 shrink.",
+				description: "Transform scale factor",
 			},
 			positionX: {
 				type: "number",
-				description:
-					"Horizontal pixel offset from canvas center. 0 = center. Positive = right, negative = left.",
+				description: "Horizontal pixel offset from canvas center",
 			},
 			positionY: {
 				type: "number",
-				description:
-					"Vertical pixel offset from canvas center. 0 = center. Positive = down, negative = up.",
+				description: "Vertical pixel offset from canvas center",
 			},
 			rotate: {
 				type: "number",
-				description: "Rotation angle in degrees. Positive = clockwise.",
+				description: "Rotation angle in degrees",
 			},
 		},
 		required: ["trackId", "elementId"],
@@ -367,7 +700,6 @@ export const updateElementTool: AgentTool = {
 		const editor = EditorCore.getInstance();
 		const trackId = args.trackId as string;
 		const elementId = args.elementId as string;
-
 		const updates: Record<string, unknown> = {};
 
 		if (args.content !== undefined) updates.content = args.content;
@@ -376,8 +708,9 @@ export const updateElementTool: AgentTool = {
 		if (args.fontWeight !== undefined) updates.fontWeight = args.fontWeight;
 		if (args.fontStyle !== undefined) updates.fontStyle = args.fontStyle;
 		if (args.color !== undefined) updates.color = args.color;
-		if (args.backgroundColor !== undefined)
+		if (args.backgroundColor !== undefined) {
 			updates.backgroundColor = args.backgroundColor;
+		}
 		if (args.textAlign !== undefined) updates.textAlign = args.textAlign;
 		if (args.opacity !== undefined) updates.opacity = args.opacity;
 
@@ -389,7 +722,7 @@ export const updateElementTool: AgentTool = {
 
 		if (hasTransform) {
 			const track = editor.timeline.getTrackById({ trackId });
-			const element = track?.elements.find((e) => e.id === elementId);
+			const element = track?.elements.find((candidate) => candidate.id === elementId);
 			const currentTransform =
 				element && "transform" in element
 					? element.transform
@@ -514,6 +847,10 @@ export const timelineTools: AgentTool[] = [
 	addVideoToTimelineTool,
 	addTextToTimelineTool,
 	addAudioToTimelineTool,
+	getElementAnimationsTool,
+	addKeyframesTool,
+	removeKeyframesTool,
+	setAnimationPresetTool,
 	updateElementTool,
 	deleteElementTool,
 	moveElementTool,

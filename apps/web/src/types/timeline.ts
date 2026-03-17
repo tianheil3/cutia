@@ -55,6 +55,30 @@ export interface Transform {
 	flipY?: boolean;
 }
 
+export type AnimatableProperty =
+	| "opacity"
+	| "transform.position.x"
+	| "transform.position.y"
+	| "transform.scale"
+	| "transform.rotate";
+
+export type AnimationEasing =
+	| "linear"
+	| "ease-in"
+	| "ease-out"
+	| "ease-in-out"
+	| "hold";
+
+export interface AnimationKeyframe {
+	time: number;
+	value: number;
+	easing?: AnimationEasing;
+}
+
+export type ElementAnimations = Partial<
+	Record<AnimatableProperty, AnimationKeyframe[]>
+>;
+
 // ---- Transitions ----
 
 export type TransitionType =
@@ -115,6 +139,7 @@ export interface VideoElement extends BaseTimelineElement {
 	hidden?: boolean;
 	transform: Transform;
 	opacity: number;
+	animations?: ElementAnimations;
 	playbackRate?: number;
 	reversed?: boolean;
 }
@@ -125,6 +150,7 @@ export interface ImageElement extends BaseTimelineElement {
 	hidden?: boolean;
 	transform: Transform;
 	opacity: number;
+	animations?: ElementAnimations;
 }
 
 export interface TextStroke {
@@ -153,6 +179,7 @@ export interface TextElement extends BaseTimelineElement {
 	hidden?: boolean;
 	transform: Transform;
 	opacity: number;
+	animations?: ElementAnimations;
 	stroke?: TextStroke;
 	shadow?: TextShadow;
 	boxWidth?: number;
@@ -168,11 +195,18 @@ export interface StickerElement extends BaseTimelineElement {
 	hidden?: boolean;
 	transform: Transform;
 	opacity: number;
+	animations?: ElementAnimations;
 	color?: string;
 }
 
 export type TimelineElement =
 	| AudioElement
+	| VideoElement
+	| ImageElement
+	| TextElement
+	| StickerElement;
+
+export type AnimatableElement =
 	| VideoElement
 	| ImageElement
 	| TextElement
