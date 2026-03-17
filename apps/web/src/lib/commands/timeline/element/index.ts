@@ -7,6 +7,7 @@ export { UpdateElementDurationCommand } from "./update-element-duration";
 export { UpdateElementStartTimeCommand } from "./update-element-start-time";
 export { SplitElementsCommand } from "./split-elements";
 export { UpdateElementCommand } from "./update-element";
+export { UpdateElementAnimationsCommand } from "./update-element-animations";
 export { ToggleElementsVisibilityCommand } from "./toggle-elements-visibility";
 export { ToggleElementsMutedCommand } from "./toggle-elements-muted";
 export { MoveElementCommand } from "./move-elements";

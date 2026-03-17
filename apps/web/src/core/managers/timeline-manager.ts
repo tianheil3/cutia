@@ -7,8 +7,11 @@ import type {
 	TransitionType,
 	TrackTransition,
 	VideoTrack,
+	AnimationKeyframe,
+	AnimatableProperty,
 } from "@/types/timeline";
 import { calculateTotalDuration } from "@/lib/timeline";
+import type { AnimationPreset } from "@/lib/timeline/animation-utils";
 import {
 	buildTrackTransition,
 	addTransitionToTrack,
@@ -31,6 +34,7 @@ import {
 	ToggleElementsVisibilityCommand,
 	ToggleElementsMutedCommand,
 	UpdateElementCommand,
+	UpdateElementAnimationsCommand,
 	SplitElementsCommand,
 	PasteCommand,
 	UpdateElementStartTimeCommand,
@@ -251,6 +255,69 @@ export class TimelineManager {
 		}
 	}
 
+	addKeyframes({
+		trackId,
+		elementId,
+		property,
+		keyframes,
+	}: {
+		trackId: string;
+		elementId: string;
+		property: AnimatableProperty;
+		keyframes: AnimationKeyframe[];
+	}): void {
+		const command = new UpdateElementAnimationsCommand({
+			type: "add-keyframes",
+			trackId,
+			elementId,
+			property,
+			keyframes,
+		});
+		this.editor.command.execute({ command });
+	}
+
+	removeKeyframes({
+		trackId,
+		elementId,
+		property,
+		times,
+	}: {
+		trackId: string;
+		elementId: string;
+		property: AnimatableProperty;
+		times?: number[];
+	}): void {
+		const command = new UpdateElementAnimationsCommand({
+			type: "remove-keyframes",
+			trackId,
+			elementId,
+			property,
+			times,
+		});
+		this.editor.command.execute({ command });
+	}
+
+	setAnimationPreset({
+		trackId,
+		elementId,
+		preset,
+		duration,
+	}: {
+		trackId: string;
+		elementId: string;
+		preset: AnimationPreset;
+		duration?: number;
+	}): void {
+		const command = new UpdateElementAnimationsCommand({
+			type: "set-preset",
+			trackId,
+			elementId,
+			preset,
+			duration,
+		});
+		this.editor.command.execute({ command });
+	}
+
 	duplicateElements({
 		elements,
 	}: {
@@ -403,7 +470,9 @@ export class TimelineManager {
 	}
 
 	private notify(): void {
-		this.listeners.forEach((fn) => fn());
+		this.listeners.forEach((fn) => {
+			fn();
+		});
 	}
 
 	updateTracks(newTracks: TimelineTrack[]): void {

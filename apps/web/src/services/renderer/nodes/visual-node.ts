@@ -1,6 +1,10 @@
 import type { CanvasRenderer } from "../canvas-renderer";
 import { BaseNode } from "./base-node";
-import type { Transform } from "@/types/timeline";
+import {
+	resolveAnimatedOpacity,
+	resolveAnimatedTransform,
+} from "@/lib/timeline/animation-utils";
+import type { ElementAnimations, Transform } from "@/types/timeline";
 
 const VISUAL_EPSILON = 1 / 1000;
 
@@ -11,6 +15,7 @@ export interface VisualNodeParams {
 	trimEnd: number;
 	transform: Transform;
 	opacity: number;
+	animations?: ElementAnimations;
 	playbackRate?: number;
 	reversed?: boolean;
 }
@@ -41,15 +46,27 @@ export abstract class VisualNode<
 		source,
 		sourceWidth,
 		sourceHeight,
+		time,
 	}: {
 		renderer: CanvasRenderer;
 		source: CanvasImageSource;
 		sourceWidth: number;
 		sourceHeight: number;
+		time: number;
 	}): void {
 		renderer.context.save();
 
-		const { transform, opacity } = this.params;
+		const localTime = time - this.params.timeOffset;
+		const transform = resolveAnimatedTransform({
+			baseTransform: this.params.transform,
+			animations: this.params.animations,
+			localTime,
+		});
+		const opacity = resolveAnimatedOpacity({
+			baseOpacity: this.params.opacity,
+			animations: this.params.animations,
+			localTime,
+		});
 		const containScale = Math.min(
 			renderer.width / sourceWidth,
 			renderer.height / sourceHeight,

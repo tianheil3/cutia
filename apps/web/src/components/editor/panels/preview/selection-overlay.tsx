@@ -1,6 +1,7 @@
 import { useSyncExternalStore, useMemo } from "react";
 import { useEditor } from "@/hooks/use-editor";
 import { cn } from "@/utils/ui";
+import { resolveAnimatedTransform } from "@/lib/timeline/animation-utils";
 import type {
 	TimelineElement,
 	VideoElement,
@@ -65,32 +66,39 @@ function computeMediaBounds({
 	canvasWidth,
 	canvasHeight,
 	displayScale,
+	currentTime,
 }: {
 	element: VideoElement | ImageElement;
 	media: MediaAsset | undefined;
 	canvasWidth: number;
 	canvasHeight: number;
 	displayScale: number;
+	currentTime: number;
 }): ElementBounds | null {
 	if (!media) return null;
+
+	const animatedTransform = resolveAnimatedTransform({
+		baseTransform: element.transform,
+		animations: element.animations,
+		localTime: currentTime - element.startTime,
+	});
 
 	const mediaW = media.width || canvasWidth;
 	const mediaH = media.height || canvasHeight;
 	const containScale = Math.min(canvasWidth / mediaW, canvasHeight / mediaH);
-	const scaledW = mediaW * containScale * element.transform.scale;
-	const scaledH = mediaH * containScale * element.transform.scale;
+	const scaledW = mediaW * containScale * animatedTransform.scale;
+	const scaledH = mediaH * containScale * animatedTransform.scale;
 
-	const canvasX =
-		canvasWidth / 2 + element.transform.position.x - scaledW / 2;
+	const canvasX = canvasWidth / 2 + animatedTransform.position.x - scaledW / 2;
 	const canvasY =
-		canvasHeight / 2 + element.transform.position.y - scaledH / 2;
+		canvasHeight / 2 + animatedTransform.position.y - scaledH / 2;
 
 	return {
 		left: canvasX * displayScale,
 		top: canvasY * displayScale,
 		width: scaledW * displayScale,
 		height: scaledH * displayScale,
-		rotate: element.transform.rotate,
+		rotate: animatedTransform.rotate,
 	};
 }
 
@@ -99,12 +107,19 @@ function computeTextBounds({
 	canvasWidth,
 	canvasHeight,
 	displayScale,
+	currentTime,
 }: {
 	element: TextElement;
 	canvasWidth: number;
 	canvasHeight: number;
 	displayScale: number;
+	currentTime: number;
 }): ElementBounds {
+	const animatedTransform = resolveAnimatedTransform({
+		baseTransform: element.transform,
+		animations: element.animations,
+		localTime: currentTime - element.startTime,
+	});
 	const scaleFactor = canvasHeight / FONT_SIZE_SCALE_REFERENCE;
 	const scaledFontSize = element.fontSize * scaleFactor;
 
@@ -115,7 +130,7 @@ function computeTextBounds({
 
 	let estimatedWidth: number;
 	let estimatedHeight: number;
-	const elementScale = element.transform.scale;
+	const elementScale = animatedTransform.scale;
 
 	if (hasBoxWidth) {
 		estimatedWidth = scaledBoxWidth;
@@ -134,8 +149,8 @@ function computeTextBounds({
 		estimatedHeight = scaledFontSize * 1.4;
 	}
 
-	const centerX = canvasWidth / 2 + element.transform.position.x;
-	const baseY = canvasHeight / 2 + element.transform.position.y;
+	const centerX = canvasWidth / 2 + animatedTransform.position.x;
+	const baseY = canvasHeight / 2 + animatedTransform.position.y;
 	const isBottomAligned = isBottomAlignedSubtitleText({ element });
 	const scaledEstimatedWidth = estimatedWidth * elementScale;
 	const scaledEstimatedHeight = estimatedHeight * elementScale;
@@ -148,7 +163,7 @@ function computeTextBounds({
 		top: topY * displayScale,
 		width: scaledEstimatedWidth * displayScale,
 		height: scaledEstimatedHeight * displayScale,
-		rotate: element.transform.rotate,
+		rotate: animatedTransform.rotate,
 	};
 }
 
@@ -157,28 +172,35 @@ function computeStickerBounds({
 	canvasWidth,
 	canvasHeight,
 	displayScale,
+	currentTime,
 }: {
 	element: StickerElement;
 	canvasWidth: number;
 	canvasHeight: number;
 	displayScale: number;
+	currentTime: number;
 }): ElementBounds {
+	const animatedTransform = resolveAnimatedTransform({
+		baseTransform: element.transform,
+		animations: element.animations,
+		localTime: currentTime - element.startTime,
+	});
 	const stickerSource = 200;
 	const containScale = Math.min(
 		canvasWidth / stickerSource,
 		canvasHeight / stickerSource,
 	);
-	const stickerSize = stickerSource * containScale * element.transform.scale;
+	const stickerSize = stickerSource * containScale * animatedTransform.scale;
 
-	const centerX = canvasWidth / 2 + element.transform.position.x;
-	const centerY = canvasHeight / 2 + element.transform.position.y;
+	const centerX = canvasWidth / 2 + animatedTransform.position.x;
+	const centerY = canvasHeight / 2 + animatedTransform.position.y;
 
 	return {
 		left: (centerX - stickerSize / 2) * displayScale,
 		top: (centerY - stickerSize / 2) * displayScale,
 		width: stickerSize * displayScale,
 		height: stickerSize * displayScale,
-		rotate: element.transform.rotate,
+		rotate: animatedTransform.rotate,
 	};
 }
 
@@ -188,12 +210,14 @@ function computeElementBounds({
 	canvasWidth,
 	canvasHeight,
 	displayScale,
+	currentTime,
 }: {
 	element: TimelineElement;
 	media: MediaAsset | undefined;
 	canvasWidth: number;
 	canvasHeight: number;
 	displayScale: number;
+	currentTime: number;
 }): ElementBounds | null {
 	switch (element.type) {
 		case "video":
@@ -204,6 +228,7 @@ function computeElementBounds({
 				canvasWidth,
 				canvasHeight,
 				displayScale,
+				currentTime,
 			});
 		case "text":
 			return computeTextBounds({
@@ -211,6 +236,7 @@ function computeElementBounds({
 				canvasWidth,
 				canvasHeight,
 				displayScale,
+				currentTime,
 			});
 		case "sticker":
 			return computeStickerBounds({
@@ -218,6 +244,7 @@ function computeElementBounds({
 				canvasWidth,
 				canvasHeight,
 				displayScale,
+				currentTime,
 			});
 		default:
 			return null;
@@ -405,6 +432,7 @@ export function SelectionOverlay({
 					canvasWidth,
 					canvasHeight,
 					displayScale,
+					currentTime,
 				});
 
 				if (!bounds) return null;

@@ -1,5 +1,9 @@
 import type { CanvasRenderer } from "../canvas-renderer";
 import { BaseNode } from "./base-node";
+import {
+	resolveAnimatedOpacity,
+	resolveAnimatedTransform,
+} from "@/lib/timeline/animation-utils";
 import type { TextElement } from "@/types/timeline";
 import { FONT_SIZE_SCALE_REFERENCE } from "@/constants/text-constants";
 
@@ -89,17 +93,29 @@ export class TextNode extends BaseNode<TextNodeParams> {
 
 		renderer.context.save();
 
-		const x = this.params.transform.position.x + this.params.canvasCenter.x;
-		const y = this.params.transform.position.y + this.params.canvasCenter.y;
+		const localTime = time - this.params.startTime;
+		const resolvedTransform = resolveAnimatedTransform({
+			baseTransform: this.params.transform,
+			animations: this.params.animations,
+			localTime,
+		});
+		const resolvedOpacity = resolveAnimatedOpacity({
+			baseOpacity: this.params.opacity,
+			animations: this.params.animations,
+			localTime,
+		});
+
+		const x = resolvedTransform.position.x + this.params.canvasCenter.x;
+		const y = resolvedTransform.position.y + this.params.canvasCenter.y;
 
 		renderer.context.translate(x, y);
-		if (this.params.transform.rotate) {
-			renderer.context.rotate((this.params.transform.rotate * Math.PI) / 180);
+		if (resolvedTransform.rotate) {
+			renderer.context.rotate((resolvedTransform.rotate * Math.PI) / 180);
 		}
-		if (this.params.transform.scale !== 1) {
+		if (resolvedTransform.scale !== 1) {
 			renderer.context.scale(
-				this.params.transform.scale,
-				this.params.transform.scale,
+				resolvedTransform.scale,
+				resolvedTransform.scale,
 			);
 		}
 
@@ -116,7 +132,7 @@ export class TextNode extends BaseNode<TextNodeParams> {
 		renderer.context.fillStyle = this.params.color;
 
 		const prevAlpha = renderer.context.globalAlpha;
-		renderer.context.globalAlpha = this.params.opacity;
+		renderer.context.globalAlpha = resolvedOpacity;
 
 		const boxWidth = this.params.boxWidth;
 		const hasBoxWidth = boxWidth !== undefined && boxWidth > 0;
