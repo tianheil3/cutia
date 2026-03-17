@@ -1,5 +1,6 @@
 import { EditorCore } from "@/core";
 import type { AgentTool } from "./types";
+import { createAnalyzeProjectImagesTool } from "./project-image-analysis";
 
 export const listMediaAssetsTool: AgentTool = {
 	name: "list_media_assets",
@@ -31,4 +32,11 @@ export const listMediaAssetsTool: AgentTool = {
 	},
 };
 
-export const mediaTools: AgentTool[] = [listMediaAssetsTool];
+export const analyzeProjectImagesTool = createAnalyzeProjectImagesTool({
+	getAssets: () => EditorCore.getInstance().media.getAssets(),
+});
+
+export const mediaTools: AgentTool[] = [
+	listMediaAssetsTool,
+	analyzeProjectImagesTool,
+];
