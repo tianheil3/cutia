@@ -8,14 +8,14 @@ import { DEFAULT_LOGO_URL, SOCIAL_LINKS } from "@/constants/site-constants";
 import { motion } from "motion/react";
 import { useTranslation } from "@i18next-toolkit/nextjs-approuter";
 
-const floatingParticles = Array.from({ length: 6 }, (_, i) => ({
-	id: i,
-	size: 2 + Math.random() * 3,
-	x: 10 + Math.random() * 80,
-	y: 10 + Math.random() * 80,
-	duration: 15 + Math.random() * 20,
-	delay: Math.random() * -20,
-}));
+const floatingParticles = [
+	{ id: 0, size: 3.2, x: 18, y: 24, duration: 18, delay: -4 },
+	{ id: 1, size: 4.1, x: 31, y: 68, duration: 22, delay: -11 },
+	{ id: 2, size: 2.8, x: 47, y: 17, duration: 27, delay: -7 },
+	{ id: 3, size: 3.6, x: 63, y: 56, duration: 19, delay: -15 },
+	{ id: 4, size: 4.4, x: 76, y: 28, duration: 24, delay: -9 },
+	{ id: 5, size: 2.5, x: 84, y: 73, duration: 29, delay: -18 },
+] as const;
 
 export function Hero() {
 	const { t } = useTranslation();
@@ -149,7 +149,7 @@ export function Hero() {
 							{t('Start editing')}
 						</Button>
 					</Link>
-					<Link
+					<a
 						href={SOCIAL_LINKS.github}
 						target="_blank"
 						rel="noopener noreferrer"
@@ -163,7 +163,7 @@ export function Hero() {
 							{t('View on GitHub')}
 							<ArrowRight className="size-4" />
 						</Button>
-					</Link>
+					</a>
 				</motion.div>
 			</div>
 

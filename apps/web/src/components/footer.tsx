@@ -44,7 +44,7 @@ export function Footer() {
 				</div>
 
 				<div className="flex items-center gap-4">
-					<Link
+					<a
 						href={SOCIAL_LINKS.github}
 						className="text-muted-foreground hover:text-foreground transition-colors"
 						target="_blank"
@@ -52,7 +52,7 @@ export function Footer() {
 						aria-label={t('GitHub')}
 					>
 						<FaGithub className="size-4" />
-					</Link>
+					</a>
 					<span className="text-muted-foreground ml-2 text-xs">
 						© {new Date().getFullYear()} Cutia
 					</span>

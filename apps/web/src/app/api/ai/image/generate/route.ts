@@ -3,8 +3,8 @@ import { z } from "zod";
 
 const proxyRequestSchema = z.object({
 	url: z.string().url(),
-	headers: z.record(z.string()).optional(),
-	body: z.record(z.unknown()),
+	headers: z.record(z.string(), z.string()).optional(),
+	body: z.record(z.string(), z.unknown()),
 });
 
 export async function POST(request: NextRequest) {
