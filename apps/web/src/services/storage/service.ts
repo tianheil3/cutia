@@ -2,6 +2,7 @@ import type { TProject, TProjectMetadata } from "@/types/project";
 import { getProjectDurationFromScenes } from "@/lib/scenes";
 import type { MediaAsset } from "@/types/assets";
 import { IndexedDBAdapter } from "./indexeddb-adapter";
+import { IndexedDBFileAdapter } from "./indexeddb-file-adapter";
 import { OPFSAdapter } from "./opfs-adapter";
 import type {
 	MediaAssetData,
@@ -64,7 +65,13 @@ class StorageService {
 			this.config.version,
 		);
 
-		const mediaAssetsAdapter = new OPFSAdapter(`media-files-${projectId}`);
+		const mediaAssetsAdapter = OPFSAdapter.isSupported()
+			? new OPFSAdapter(`media-files-${projectId}`)
+			: new IndexedDBFileAdapter(
+					`${this.config.mediaDb}-files-${projectId}`,
+					"media-files",
+					this.config.version,
+				);
 
 		return { mediaMetadataAdapter, mediaAssetsAdapter };
 	}
@@ -371,9 +378,13 @@ class StorageService {
 	}
 
 	async getDetailedStorageStats(): Promise<StorageStats> {
-		const estimate = await navigator.storage.estimate();
-		const quota = estimate.quota ?? 0;
-		const usage = estimate.usage ?? 0;
+		const estimate =
+			typeof navigator !== "undefined" &&
+			typeof navigator.storage?.estimate === "function"
+				? await navigator.storage.estimate()
+				: undefined;
+		const quota = estimate?.quota ?? 0;
+		const usage = estimate?.usage ?? 0;
 
 		const serializedProjects = await this.projectsAdapter.getAll();
 		const projects: ProjectStorageStats[] = [];

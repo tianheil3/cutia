@@ -766,14 +766,14 @@ function MediaPreview({
 	if (item.type === "image") {
 		return (
 			<div className="relative flex size-full items-center justify-center">
-				<Image
-					src={item.url ?? ""}
-					alt={item.name}
-					fill
-					sizes="100vw"
-					className="object-cover"
-					loading="lazy"
-					unoptimized
+				<div
+					className="absolute inset-0"
+					style={{
+						backgroundImage: `url(${item.url ?? item.thumbnailUrl ?? ""})`,
+						backgroundRepeat: "no-repeat",
+						backgroundSize: "cover",
+						backgroundPosition: "center",
+					}}
 				/>
 			</div>
 		);
